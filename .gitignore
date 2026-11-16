@@ -6,3 +6,9 @@ output/
 .env
 .env.*
 .DS_Store
+
+# LaTeX build files
+report/*.aux
+report/*.log
+report/*.toc
+report/*.out
