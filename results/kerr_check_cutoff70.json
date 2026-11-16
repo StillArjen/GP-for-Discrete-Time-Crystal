@@ -1,0 +1,54 @@
+{
+  "model": "manuscript Kerr oscillator",
+  "U": -1.0,
+  "gamma_1": 0.1,
+  "gamma_2": 0.1,
+  "kappa": 0.1,
+  "E": 0.0,
+  "phi": 0.0,
+  "theta": 0.0,
+  "cutoff": 70,
+  "shape": [
+    25,
+    31
+  ],
+  "elapsed_seconds": 8.485202074050903,
+  "qutip": "5.3.1",
+  "numpy": "2.5.4",
+  "phase_node_threshold": 1e-06,
+  "full_loop": "R(phi)=exp(-i phi n), phi=0..2pi; squeezing phase=0..4pi",
+  "half_loop": "R(phi)=exp(-i phi n), phi=0..pi; squeezing phase=0..2pi, parity endpoint",
+  "interpretation": "finite-cutoff steady-state response; no fitted phase boundary",
+  "fock_dimension_range": [
+    70.0,
+    70.0
+  ],
+  "trace_error_range": [
+    0.0,
+    1.5543122344752192e-15
+  ],
+  "hermiticity_frobenius_range": [
+    0.0,
+    0.0
+  ],
+  "minimum_eigenvalue_range": [
+    -7.256146377420544e-16,
+    2.556178380742421e-35
+  ],
+  "negative_eigenvalue_weight_range": [
+    -0.0,
+    8.3979244835773e-15
+  ],
+  "liouvillian_residual_frobenius_range": [
+    5.278705291283553e-15,
+    1.3603001347136561e-13
+  ],
+  "tail_levels_range": [
+    5.0,
+    5.0
+  ],
+  "top_fock_tail_probability_range": [
+    -1.960220679252698e-23,
+    1.579084735959686e-23
+  ]
+}
