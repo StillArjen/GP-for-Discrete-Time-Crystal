@@ -27,6 +27,13 @@ Two questions are addressed here.
    pi pairing, read from a parity-symmetric state in which every one-time
    order parameter vanishes.
 
+3. An exact single-state reduction.  Giving the counter-rotating coupling a
+   phase theta makes the model covariant under R = exp(-i phi N_exc),
+   N_exc = n + Jz + N/2 (R H_theta R^dag = H_{theta + 2 phi}).  Winding theta
+   is therefore the Dicke analogue of the squeezing-phase loop of the Kerr
+   paper and reduces to Z = sum_k lambda_k exp(i angle <N_exc>_k), with a
+   parity endpoint for the half loop (``excitation_loop_amplitudes``).
+
 Vectorization is column-major, as in QuTiP's operator_to_vector.
 """
 
@@ -60,11 +67,23 @@ class DickeFloquetModel:
     ops: dict                   # dense operators: n, jx, jy, jz
     sector_index: dict          # vec indices of the parity-even/odd superoperator sectors
     sector_L: dict              # {sector: (L_on, L_off)} restricted to that sector
+    theta: float = 0.0          # phase of the counter-rotating coupling
+    t_on: float = np.pi         # duration of the coupled segment
+    t_off: float = np.pi        # duration of the free segment (period = t_on + t_off)
 
 
 def build_model(atoms: int = 2, cutoff: int = 24, epsilon: float = 0.01,
-                kappa: float = 0.05, coupling: float = 1.0) -> DickeFloquetModel:
-    """Same conventions as dicke_gp_scan.simulate_point."""
+                kappa: float = 0.05, coupling: float = 1.0, *, theta: float = 0.0,
+                t_on: float = np.pi, t_off: float = np.pi) -> DickeFloquetModel:
+    """Same conventions as dicke_gp_scan.simulate_point (theta = 0, t_on = t_off = pi).
+
+    The coupled Hamiltonian is written with separate co- and counter-rotating
+    terms,
+        H_on = H_off + (g/sqrt N) [(a J+ + a^dag J-) + (e^{i theta} a J- + e^{-i theta} a^dag J+)],
+    which equals the Dicke coupling (2g/sqrt N)(a + a^dag) Jx at theta = 0.
+    With N_exc = n + Jz + j and R(phi) = exp(-i phi N_exc), R H_theta R^dag =
+    H_{theta + 2 phi}, and D[a] is invariant, so winding theta is covariant.
+    """
     j = atoms / 2.0
     spin_dim = atoms + 1
     dim = cutoff * spin_dim
@@ -74,7 +93,11 @@ def build_model(atoms: int = 2, cutoff: int = 24, epsilon: float = 0.01,
     jy = qt.tensor(qt.qeye(cutoff), qt.jmat(j, "y"))
     jz = qt.tensor(qt.qeye(cutoff), qt.jmat(j, "z"))
     h_off = (1.0 - epsilon) * n + (1.0 + epsilon) * jz
-    h_on = h_off + 2.0 * coupling / np.sqrt(atoms) * (a + a.dag()) * jx
+    jp = qt.tensor(qt.qeye(cutoff), qt.jmat(j, "+"))
+    jm = jp.dag()
+    co_rotating = a * jp + a.dag() * jm
+    counter_rotating = np.exp(1j * theta) * a * jm + np.exp(-1j * theta) * a.dag() * jp
+    h_on = h_off + coupling / np.sqrt(atoms) * (co_rotating + counter_rotating)
     collapse = [np.sqrt(kappa) * a] if kappa else []
     L_on = qt.liouvillian(h_on, collapse).data.as_scipy().tocsc()
     L_off = qt.liouvillian(h_off, collapse).data.as_scipy().tocsc()
@@ -83,20 +106,22 @@ def build_model(atoms: int = 2, cutoff: int = 24, epsilon: float = 0.01,
     spin_excitations = np.tile(np.arange(spin_dim)[::-1], cutoff)  # j + m
     parity = (-1.0) ** (photon + spin_excitations)
     parity_vec = np.outer(parity, parity).reshape(-1, order="F")
-    ops = {"n": n.full(), "jx": jx.full(), "jy": jy.full(), "jz": jz.full()}
+    nexc = n + jz + j * qt.qeye([cutoff, spin_dim])
+    ops = {"n": n.full(), "jx": jx.full(), "jy": jy.full(), "jz": jz.full(), "nexc": nexc.full()}
     # The Liouvillians commute with Pi . Pi, so they are block diagonal in the
     # two superoperator parity sectors; restricting halves every matvec.
     sector_index = {"even": np.flatnonzero(parity_vec > 0), "odd": np.flatnonzero(parity_vec < 0)}
     sector_L = {name: tuple(L[idx][:, idx].tocsc() for L in (L_on, L_off))
                 for name, idx in sector_index.items()}
     return DickeFloquetModel(atoms, cutoff, epsilon, kappa, coupling, dim, parity,
-                             parity_vec, L_on, L_off, ops, sector_index, sector_L)
+                             parity_vec, L_on, L_off, ops, sector_index, sector_L,
+                             theta, t_on, t_off)
 
 
 def one_period(model: DickeFloquetModel, vec: np.ndarray) -> np.ndarray:
-    """Coupling on for the first half period, off for the second (T = 2 pi)."""
-    out = expm_multiply(np.pi * model.L_on, vec)
-    return expm_multiply(np.pi * model.L_off, out)
+    """Coupling on for t_on, then off for t_off (default: half periods of T = 2 pi)."""
+    out = expm_multiply(model.t_on * model.L_on, vec)
+    return expm_multiply(model.t_off * model.L_off, out)
 
 
 def floquet_spectrum(model: DickeFloquetModel, sector: str, k: int = 4,
@@ -112,7 +137,7 @@ def floquet_spectrum(model: DickeFloquetModel, sector: str, k: int = 4,
     size = len(idx)
     operator = LinearOperator(
         (size, size), dtype=complex,
-        matvec=lambda v: expm_multiply(np.pi * L_off, expm_multiply(np.pi * L_on, v)))
+        matvec=lambda v: expm_multiply(model.t_off * L_off, expm_multiply(model.t_on * L_on, v)))
     rng = np.random.default_rng(seed)
     start = rng.normal(size=size) + 1j * rng.normal(size=size)
     values, vectors = eigs(operator, k=k, which="LM", v0=start, tol=tol,
@@ -154,9 +179,10 @@ def micromotion_gp(model: DickeFloquetModel, rho_vec: np.ndarray, steps_per_half
         raise ValueError("micromotion_gp expects a parity-symmetric state")
     grids = []
     current_even = rho_vec[even_idx]
-    for generator in model.sector_L["even"]:
-        grids.append(expm_multiply(generator, current_even, start=0.0, stop=np.pi,
-                                   num=steps_per_half + 1, endpoint=True))
+    for generator, duration in zip(model.sector_L["even"], (model.t_on, model.t_off)):
+        steps = max(2, int(round(steps_per_half * duration / np.pi)))
+        grids.append(expm_multiply(generator, current_even, start=0.0, stop=duration,
+                                   num=steps + 1, endpoint=True))
         current_even = grids[-1][-1]
     # Concatenate, dropping the duplicated switching instant, and embed.
     reduced = np.concatenate([grids[0], grids[1][1:]], axis=0)
@@ -261,3 +287,134 @@ def strobe_observables(model: DickeFloquetModel, rho_vec: np.ndarray) -> dict[st
         "sigma_x": float(np.real(np.trace(model.ops["jx"] @ rho)) / j),
         "parity_odd_norm": float(np.linalg.norm(0.5 * (rho_vec - model.parity_vec * rho_vec))),
     }
+
+
+def excitation_loop_amplitudes(model: DickeFloquetModel, rho: np.ndarray) -> dict[str, Any]:
+    """Exact GP of the loop generated by winding the counter-rotating phase theta.
+
+    Because R(phi) H_theta R(phi)^dag = H_{theta + 2 phi} with R = exp(-i phi N_exc)
+    and D[a] is invariant, winding theta rotates every steady state (and every
+    Floquet steady state at fixed t) by R(theta/2).  This is the Dicke analogue of
+    the squeezing-phase loop of the Kerr paper, with N_exc in place of n:
+      theta: 0 -> 2 pi  (half loop, endpoint R(pi) = Pi)
+          Z_half = sum_k lambda_k pi_k exp(i pi <N_exc>_k) = Z_even + Z_odd,
+      theta: 0 -> 4 pi  (full loop)
+          Z_full = sum_k lambda_k exp(i 2 pi <N_exc>_k).
+    ``rho`` must be parity symmetric.  Each parity block is evaluated with the
+    degeneracy-safe gp_geometry routine (its endpoint factor is pi_s * identity).
+    """
+    from gp_geometry import geometric_amplitude
+
+    rho = np.asarray(rho)
+    if rho.ndim == 1:
+        rho = rho.reshape((model.dim, model.dim), order="F")
+    rho = 0.5 * (rho + rho.conj().T)
+    odd_mask = model.parity[:, None] != model.parity[None, :]
+    if np.linalg.norm(rho[odd_mask]) > 1e-9:
+        raise ValueError("excitation_loop_amplitudes expects a parity-symmetric state")
+    nexc = model.ops["nexc"]
+    out: dict[str, Any] = {}
+    for name, idx in _sector_indices(model.parity).items():
+        block = rho[np.ix_(idx, idx)]
+        weight = float(np.real(np.trace(block)))
+        out["weight_" + name] = weight
+        if weight <= 1e-14:
+            out["Z_" + name] = 0j
+            continue
+        out["Z_" + name] = weight * geometric_amplitude(
+            block / weight, nexc[np.ix_(idx, idx)], angle=np.pi, positivity_tol=1e-7)
+    ze, zo = out["Z_even"], out["Z_odd"]
+    out["Z_half"] = ze + zo
+    out["Z_full"] = geometric_amplitude(rho / np.trace(rho).real, nexc, positivity_tol=1e-7)
+    out["relative_sector_phase"] = float(np.angle(ze * np.conj(zo))) if abs(ze * zo) > 0 else 0.0
+    denom = abs(ze) ** 2 + abs(zo) ** 2
+    out["pairing"] = float(-2 * np.real(ze * np.conj(zo)) / denom) if denom > 0 else 0.0
+    return out
+
+
+def static_steady_state(model: DickeFloquetModel) -> np.ndarray:
+    """Steady state of the undriven model (coupling always on), as a dense matrix.
+
+    Solves L_on rho = 0 in the parity-even superoperator sector, with one
+    equation replaced by the trace condition.
+    """
+    from scipy.sparse import csr_matrix, vstack
+    from scipy.sparse.linalg import spsolve
+
+    idx = model.sector_index["even"]
+    L = model.sector_L["even"][0].tocsr()
+    diagonal = np.arange(model.dim) * (model.dim + 1)          # vec index of rho_ii
+    pos = np.searchsorted(idx, diagonal)
+    assert np.all(idx[pos] == diagonal)
+    trace_row = csr_matrix((np.ones(model.dim), (np.zeros(model.dim, dtype=int), pos)),
+                           shape=(1, len(idx)))
+    system = vstack([L[1:], trace_row]).tocsc() if pos[0] == 0 else None
+    if system is None:  # keep the trace row in place of the rho_00 equation
+        rows = np.arange(L.shape[0]) != pos[0]
+        system = vstack([L[rows], trace_row]).tocsc()
+    rhs = np.zeros(len(idx), dtype=complex)
+    rhs[-1] = 1.0
+    x = spsolve(system, rhs)
+    vec = np.zeros(model.dim ** 2, dtype=complex)
+    vec[idx] = x
+    rho = vec.reshape((model.dim, model.dim), order="F")
+    return 0.5 * (rho + rho.conj().T)
+
+
+def static_slowest_rates(model: DickeFloquetModel, k: int = 3) -> dict[str, np.ndarray]:
+    """Liouvillian eigenvalues of the undriven model closest to zero, per sector.
+
+    The odd-sector value is the rate at which the two symmetry-broken branches
+    mix (it closes as N -> infinity in the superradiant phase); the even-sector
+    list starts with the steady state's 0.
+    """
+    from scipy.sparse.linalg import ArpackNoConvergence
+
+    out = {}
+    for name in ("even", "odd"):
+        # A small positive shift keeps the factorization regular: the even
+        # sector has an exact zero eigenvalue, and the spectrum has Re <= 0.
+        try:
+            values = eigs(model.sector_L[name][0], k=k, sigma=1e-3, which="LM",
+                          return_eigenvectors=False, tol=1e-10, maxiter=20000,
+                          ncv=max(2 * k + 1, 20))
+        except ArpackNoConvergence as error:
+            values = np.asarray(error.eigenvalues)
+            if values.size == 0:
+                values = np.full(k, np.nan + 0j)
+        out[name] = values[np.argsort(-values.real)]
+    return out
+
+
+def perturbative_excitation_gp(model: DickeFloquetModel, rho: np.ndarray) -> float:
+    """Weak-coupling estimate of arg Z_full for the N_exc loop.
+
+    The supplement's general expansion with n -> N_exc: split rho into its
+    N_exc-block-diagonal part rho0 (eigenvectors |k>, weights p_k inside each
+    block) and the inter-block coherences delta.  To second order in delta,
+        Gamma ~ 2 pi sum_{v<w} (w - v) sum_{k in v, l in w} |<k|delta|l>|^2 / (p_k - p_l).
+    The counter-rotating coupling creates the coherences (it changes N_exc by 2),
+    just as the two-photon drive does for n in the Kerr resonator.
+    """
+    rho = np.asarray(rho)
+    nexc = np.rint(np.diag(model.ops["nexc"]).real).astype(int)
+    levels = np.unique(nexc)
+    blocks = {}
+    rho0 = np.zeros_like(rho)
+    for v in levels:
+        idx = np.flatnonzero(nexc == v)
+        sub = rho[np.ix_(idx, idx)]
+        rho0[np.ix_(idx, idx)] = sub
+        p, U = np.linalg.eigh(0.5 * (sub + sub.conj().T))
+        blocks[v] = (idx, p, U)
+    delta = rho - rho0
+    gamma = 0.0
+    for i, v in enumerate(levels):
+        iv, pv, Uv = blocks[v]
+        for w in levels[i + 1:]:
+            iw, pw, Uw = blocks[w]
+            amp = Uv.conj().T @ delta[np.ix_(iv, iw)] @ Uw
+            denom = pv[:, None] - pw[None, :]
+            mask = np.abs(denom) > 1e-14
+            gamma += 2 * np.pi * (w - v) * float(np.sum(np.abs(amp[mask]) ** 2 / denom[mask]))
+    return gamma

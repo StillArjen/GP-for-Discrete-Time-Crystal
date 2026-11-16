@@ -1,0 +1,114 @@
+{
+ "epsilon": 0.01,
+ "kappa": 0.05,
+ "points": [
+  {
+   "atoms": 2,
+   "coupling": 0.05,
+   "exact_gamma": 0.007902066688560524,
+   "perturbative_gamma": 0.007909515565981044
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.1,
+   "exact_gamma": 0.03220872379889014,
+   "perturbative_gamma": 0.0323324305670289
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.15,
+   "exact_gamma": 0.07478757831611556,
+   "perturbative_gamma": 0.07545533433329446
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.2,
+   "exact_gamma": 0.13897789776138803,
+   "perturbative_gamma": 0.14126141981348037
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.25,
+   "exact_gamma": 0.22995188484395138,
+   "perturbative_gamma": 0.2362512953065161
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.3,
+   "exact_gamma": 0.3552695171051219,
+   "perturbative_gamma": 0.37055027675484226
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.35,
+   "exact_gamma": 0.525689467306708,
+   "perturbative_gamma": 0.5617969777089783
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.4,
+   "exact_gamma": 0.7561713147622544,
+   "perturbative_gamma": 0.8206395983746108
+  },
+  {
+   "atoms": 2,
+   "coupling": 0.45,
+   "exact_gamma": 1.0653577644116885,
+   "perturbative_gamma": 1.2253971785115445
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.05,
+   "exact_gamma": 0.007920238172608257,
+   "perturbative_gamma": 0.00792897837993028
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.1,
+   "exact_gamma": 0.032502175923902636,
+   "perturbative_gamma": 0.0326494868667179
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.15,
+   "exact_gamma": 0.07639425735303183,
+   "perturbative_gamma": 0.07720963203741615
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.2,
+   "exact_gamma": 0.14468184914569043,
+   "perturbative_gamma": 0.14762131122934014
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.25,
+   "exact_gamma": 0.24610139463448572,
+   "perturbative_gamma": 0.2542693027775827
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.3,
+   "exact_gamma": 0.3952109616524787,
+   "perturbative_gamma": 0.41695282363395253
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.35,
+   "exact_gamma": 0.6162263761225044,
+   "perturbative_gamma": 0.6699344566188954
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.4,
+   "exact_gamma": 0.9500218183541546,
+   "perturbative_gamma": 1.0834007776387857
+  },
+  {
+   "atoms": 4,
+   "coupling": 0.45,
+   "exact_gamma": 1.4652801055171447,
+   "perturbative_gamma": 1.6776985352579732
+  }
+ ]
+}

@@ -11,8 +11,9 @@ import unittest
 import numpy as np
 from scipy.linalg import expm
 
-from dicke_floquet import (build_model, floquet_spectrum, micromotion_gp,
-                           sector_loop_amplitudes)
+from dicke_floquet import (build_model, excitation_loop_amplitudes, floquet_spectrum,
+                           micromotion_gp, one_period, sector_loop_amplitudes,
+                           static_steady_state)
 from gp_geometry import geometric_amplitude
 from kerr_parity_half_loop import sector_half_loop
 
@@ -94,6 +95,58 @@ class SectorLoopAmplitudeTests(unittest.TestCase):
                                0.0, places=4)
         # 2*pi*(n_- - n_+) = 0.385 rad here: small, and nowhere near pi.
         self.assertLess(abs(result["relative_sector_phase"]), np.pi / 4)
+
+
+class CounterRotatingPhaseLoopTests(unittest.TestCase):
+    """The theta-winding loop of the Dicke model and its single-state reduction."""
+
+    def test_theta_zero_is_the_dicke_coupling(self):
+        import qutip as qt
+        cutoff, atoms, eps, g = 8, 2, 0.03, 0.9
+        model = build_model(atoms=atoms, cutoff=cutoff, epsilon=eps, kappa=0.1, coupling=g)
+        a = qt.tensor(qt.destroy(cutoff), qt.qeye(atoms + 1))
+        jx = qt.tensor(qt.qeye(cutoff), qt.jmat(atoms / 2, "x"))
+        jz = qt.tensor(qt.qeye(cutoff), qt.jmat(atoms / 2, "z"))
+        h = (1 - eps) * a.dag() * a + (1 + eps) * jz + 2 * g / np.sqrt(atoms) * (a + a.dag()) * jx
+        L = qt.liouvillian(h, [np.sqrt(0.1) * a]).data.as_scipy()
+        self.assertLess(abs(L - model.L_on).max(), 1e-12)
+
+    def test_theta_winding_rotates_the_steady_state(self):
+        theta = 1.3
+        base = build_model(atoms=2, cutoff=12, epsilon=0.01, kappa=0.2, coupling=0.8)
+        wound = build_model(atoms=2, cutoff=12, epsilon=0.01, kappa=0.2, coupling=0.8, theta=theta)
+        rotation = np.exp(-0.5j * theta * np.diag(base.ops["nexc"]))
+        rho, rho_theta = static_steady_state(base), static_steady_state(wound)
+        expected = (rotation[:, None] * rho) * rotation.conj()[None, :]
+        self.assertLess(np.abs(expected - rho_theta).max(), 1e-10)
+
+    def test_single_state_formula_equals_tracked_loop(self):
+        model = build_model(atoms=2, cutoff=12, epsilon=0.01, kappa=0.2, coupling=0.8)
+        rho = static_steady_state(model)
+        nexc = np.diag(model.ops["nexc"]).real
+        closed = excitation_loop_amplitudes(model, rho)
+        for stop, key in ((np.pi, "half"), (2 * np.pi, "full")):
+            def orbit():
+                for phi in np.linspace(0.0, stop, 3001):
+                    phase = np.exp(-1j * phi * nexc)
+                    yield (phase[:, None] * rho) * phase.conj()[None, :]
+            tracked = sector_loop_amplitudes(orbit(), model.parity, weight_floor=1e-12)
+            if key == "half":
+                self.assertLess(abs(tracked["Z_even"] - closed["Z_even"]), 1e-5)
+                self.assertLess(abs(tracked["Z_odd"] - closed["Z_odd"]), 1e-5)
+            else:
+                self.assertLess(abs(tracked["Z_T"] - closed["Z_full"]), 1e-5)
+
+    def test_free_segment_duration_is_respected(self):
+        default = build_model(atoms=1, cutoff=6, epsilon=0.02, kappa=0.1)
+        longer = build_model(atoms=1, cutoff=6, epsilon=0.02, kappa=0.1, t_off=2 * np.pi)
+        vec = np.zeros(default.dim ** 2, dtype=complex)
+        vec[0] = 1.0
+        once = one_period(default, vec)
+        manual = expm(np.pi * default.L_off.toarray()) @ (expm(np.pi * default.L_on.toarray()) @ vec)
+        self.assertLess(np.abs(once - manual).max(), 1e-10)
+        twice_off = expm(2 * np.pi * default.L_off.toarray()) @ (expm(np.pi * default.L_on.toarray()) @ vec)
+        self.assertLess(np.abs(one_period(longer, vec) - twice_off).max(), 1e-10)
 
 
 class FloquetSpectrumTests(unittest.TestCase):
